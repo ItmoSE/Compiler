@@ -1,0 +1,21 @@
+var x = 10;
+var s = "abc";
+var b = true;
+
+print x + 1;
+print s + "def";
+print !b;
+
+print x + s;
+print s - "z";
+print s * s;
+print b + b;
+print !x;
+
+if (x) {
+    print x;
+}
+
+while ("abc") {
+    print 1;
+}

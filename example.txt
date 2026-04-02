@@ -1,0 +1,38 @@
+var limit = 10;
+var current = 0;
+var prefix = "step: ";
+var enabled = true;
+
+while (current < limit) {
+    if (enabled != false) {
+        if (current == 5) {
+            print current * 100;
+        } else {
+            print current;
+        }
+    }
+    current = current + 1;
+}
+
+var x = 10;
+var y = 20;
+print x;
+
+{
+    var z = 5;
+    print z + 1;
+}
+
+y = 7;
+
+var s1 = "hello, ";
+var s2 = "world";
+var s3 = s1 + s2;
+print s3;
+
+var b1 = true;
+var b2 = false;
+print !b2;
+print b1 != b2;
+print x < y;
+print x == 10;
