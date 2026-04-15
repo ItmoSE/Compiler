@@ -13,7 +13,7 @@ static inline bool isIdentCont(char c) {
   return std::isalnum(c) || c == '_'; // alphanumeric
 }
 enum class TokenKind { Identifier, Number, String, Keyword, Symbol, End };
-static const char *kindName(TokenKind k) {
+inline static const char *kindName(TokenKind k) {
   switch (k) {
   case TokenKind::Symbol:
     return "Symbol";
