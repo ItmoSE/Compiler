@@ -1,6 +1,7 @@
 var limit = 10;
 var current = 0;
 var prefix = "step: ";
+var some_other_unused_variable;
 var enabled = true;
 
 while (current < limit) {

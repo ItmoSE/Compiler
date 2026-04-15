@@ -1,5 +1,6 @@
 #include "analyzer.hpp"
 #include "ast.hpp"
+#include "interpreter.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 
@@ -52,6 +53,14 @@ int main(int argc, char **argv) {
     std::cout << "\n=== ANALYSIS ===\n";
     Analyzer az;
     az.analyze(prog);
+
+    if (az.hasErrors()) {
+      std::cerr << "Execution aborted due to semantic errors\n";
+      return 1;
+    }
+    std::cout << "\n=== EXECUTION ===\n";
+    Interpreter it;
+    it.execute(prog);
 
     return 0;
   } catch (const std::exception &e) {
