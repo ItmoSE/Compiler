@@ -15,9 +15,13 @@ public:
     bool boolValue = false;
     std::string strValue;
 
+    std::vector<Value> arrayValue;
+    TypeKind elementType = TypeKind::Unknown;
+
     static Value makeInt(long long v);
     static Value makeBool(bool v);
     static Value makeStr(std::string v);
+    static Value makeArray(std::size_t size);
   };
 
   class RuntimeEnvironment {

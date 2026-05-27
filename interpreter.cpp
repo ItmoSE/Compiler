@@ -25,6 +25,14 @@ Interpreter::Value Interpreter::Value::makeStr(std::string v) {
   return x;
 }
 
+Interpreter::Value Interpreter::Value::makeArray(std::size_t size) {
+  Value x;
+  x.type = TypeKind::Array;
+  x.arrayValue.resize(size);
+  x.elementType = TypeKind::Unknown;
+  return x;
+}
+
 Interpreter::RuntimeEnvironment::RuntimeEnvironment() { beginScope(); }
 
 void Interpreter::RuntimeEnvironment::beginScope() { scopes_.push_back({}); }
@@ -114,9 +122,17 @@ void Interpreter::executeStmt(const Stmt *st) {
 
   if (auto *s = dynamic_cast<const VarStmt *>(st)) {
     Value init = defaultValue();
+
+    if (s->arraySize > 0) {
+      init = Value::makeArray(s->arraySize);
+      env_.define(s->name, std::move(init));
+      return;
+    }
+
     if (s->init) {
       init = evalExpr(s->init.get());
     }
+
     env_.define(s->name, std::move(init));
     return;
   }
@@ -198,11 +214,88 @@ Interpreter::Value Interpreter::evalExpr(const Expr *e) {
       throw std::runtime_error("runtime error: undefined variable '" + x->name +
                                "'");
     }
+
+    if (v->type == TypeKind::Array) {
+      throw std::runtime_error("runtime error: array '" + x->name +
+                               "' cannot be used as a scalar value");
+    }
+
     return *v;
   }
 
   if (auto *x = dynamic_cast<const CallExpr *>(e)) {
     return callFunction(x);
+  }
+
+  if (auto *x = dynamic_cast<const IndexExpr *>(e)) {
+    Value *array = env_.resolve(x->name);
+    if (!array) {
+      throw std::runtime_error("runtime error: undefined array '" + x->name +
+                               "'");
+    }
+
+    if (array->type != TypeKind::Array) {
+      throw std::runtime_error("runtime error: variable '" + x->name +
+                               "' is not an array");
+    }
+
+    Value index = evalExpr(x->index.get());
+    if (index.type != TypeKind::Int) {
+      throw std::runtime_error("runtime error: array index must be int");
+    }
+
+    if (index.intValue < 0 ||
+        static_cast<std::size_t>(index.intValue) >= array->arrayValue.size()) {
+      throw std::runtime_error("runtime error: array index out of bounds");
+    }
+
+    const Value &slot =
+        array->arrayValue[static_cast<std::size_t>(index.intValue)];
+
+    if (slot.type == TypeKind::Unknown) {
+      throw std::runtime_error(
+          "runtime error: reading uninitialized array element");
+    }
+
+    return slot;
+  }
+
+  if (auto *x = dynamic_cast<const ArrayAssignExpr *>(e)) {
+    Value *array = env_.resolve(x->name);
+    if (!array) {
+      throw std::runtime_error("runtime error: undefined array '" + x->name +
+                               "'");
+    }
+
+    if (array->type != TypeKind::Array) {
+      throw std::runtime_error("runtime error: variable '" + x->name +
+                               "' is not an array");
+    }
+
+    Value index = evalExpr(x->index.get());
+    if (index.type != TypeKind::Int) {
+      throw std::runtime_error("runtime error: array index must be int");
+    }
+
+    if (index.intValue < 0 ||
+        static_cast<std::size_t>(index.intValue) >= array->arrayValue.size()) {
+      throw std::runtime_error("runtime error: array index out of bounds");
+    }
+
+    Value rhs = evalExpr(x->value.get());
+    if (rhs.type == TypeKind::Array) {
+      throw std::runtime_error(
+          "runtime error: arrays cannot be stored inside arrays");
+    }
+
+    if (array->elementType == TypeKind::Unknown) {
+      array->elementType = rhs.type;
+    } else if (array->elementType != rhs.type) {
+      throw std::runtime_error("runtime error: array element type mismatch");
+    }
+
+    array->arrayValue[static_cast<std::size_t>(index.intValue)] = rhs;
+    return rhs;
   }
 
   if (auto *x = dynamic_cast<const AssignExpr *>(e)) {
@@ -351,6 +444,8 @@ std::string Interpreter::valueToString(const Value &v) {
     return v.boolValue ? "true" : "false";
   case TypeKind::Str:
     return v.strValue;
+  case TypeKind::Array:
+    return "<array>";
   default:
     return "<unknown>";
   }

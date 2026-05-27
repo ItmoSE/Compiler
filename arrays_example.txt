@@ -1,0 +1,26 @@
+var nums[3];
+
+nums[0] = 10;
+nums[1] = 20;
+nums[2] = nums[0] + nums[1];
+
+print nums[2];
+
+var words[2];
+
+words[0] = "hello";
+words[1] = "world";
+
+print words[0] + ", " + words[1];
+
+var flags[2];
+
+flags[0] = true;
+flags[1] = false;
+
+print flags[0] != flags[1];
+
+var optimized_index[3];
+
+optimized_index[1 + 1] = 777;
+print optimized_index[2];

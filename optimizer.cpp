@@ -41,6 +41,18 @@ std::unique_ptr<Expr> Optimizer::optimizeExpr(std::unique_ptr<Expr> expr) {
 
     return tryFoldBinary(std::move(owned));
   }
+
+  if (auto *x = dynamic_cast<IndexExpr *>(expr.get())) {
+    x->index = optimizeExpr(std::move(x->index));
+    return expr;
+  }
+
+  if (auto *x = dynamic_cast<ArrayAssignExpr *>(expr.get())) {
+    x->index = optimizeExpr(std::move(x->index));
+    x->value = optimizeExpr(std::move(x->value));
+    return expr;
+  }
+
   if (auto *x = dynamic_cast<CallExpr *>(expr.get())) {
     for (auto &arg : x->args) {
       arg = optimizeExpr(std::move(arg));

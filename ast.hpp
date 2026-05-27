@@ -16,7 +16,7 @@ struct SourceLoc {
   int col = 0;
 };
 
-enum class TypeKind { Unknown, Int, Bool, Str, Error };
+enum class TypeKind { Unknown, Int, Bool, Str, Array, Error };
 
 inline const char *typeName(TypeKind t) {
   switch (t) {
@@ -28,6 +28,8 @@ inline const char *typeName(TypeKind t) {
     return "bool";
   case TypeKind::Str:
     return "str";
+  case TypeKind::Array:
+    return "array";
   case TypeKind::Error:
     return "error";
   }
@@ -124,6 +126,21 @@ struct CallExpr : Expr {
   }
 };
 
+struct IndexExpr : Expr {
+  std::string name;
+  SourceLoc loc;
+  std::unique_ptr<Expr> index;
+
+  IndexExpr(std::string n, SourceLoc l, std::unique_ptr<Expr> i)
+      : name(std::move(n)), loc(l), index(std::move(i)) {}
+
+  void dump(std::ostream &os, int indent) const override {
+    pad(os, indent);
+    os << "Index(" << name << ") @" << loc.line << ":" << loc.col << "\n";
+    index->dump(os, indent + 2);
+  }
+};
+
 struct AssignExpr : Expr {
   std::string name;
   SourceLoc loc;
@@ -136,6 +153,30 @@ struct AssignExpr : Expr {
     pad(os, indent);
     os << "Assign(" << name << ") @" << loc.line << ":" << loc.col << "\n";
     value->dump(os, indent + 2);
+  }
+};
+
+struct ArrayAssignExpr : Expr {
+  std::string name;
+  SourceLoc loc;
+  std::unique_ptr<Expr> index;
+  std::unique_ptr<Expr> value;
+
+  ArrayAssignExpr(std::string n, SourceLoc l, std::unique_ptr<Expr> i,
+                  std::unique_ptr<Expr> v)
+      : name(std::move(n)), loc(l), index(std::move(i)), value(std::move(v)) {}
+
+  void dump(std::ostream &os, int indent) const override {
+    pad(os, indent);
+    os << "ArrayAssign(" << name << ") @" << loc.line << ":" << loc.col << "\n";
+
+    pad(os, indent + 2);
+    os << "Index:\n";
+    index->dump(os, indent + 4);
+
+    pad(os, indent + 2);
+    os << "Value:\n";
+    value->dump(os, indent + 4);
   }
 };
 
@@ -188,22 +229,30 @@ struct VarStmt : Stmt {
   std::string name;
   SourceLoc loc;
   std::unique_ptr<Expr> init;
+  std::size_t arraySize = 0;
 
-  VarStmt(std::string n, SourceLoc l, std::unique_ptr<Expr> i)
-      : name(std::move(n)), loc(l), init(std::move(i)) {}
+  VarStmt(std::string n, SourceLoc l, std::unique_ptr<Expr> i,
+          std::size_t size = 0)
+      : name(std::move(n)), loc(l), init(std::move(i)), arraySize(size) {}
 
   void dump(std::ostream &os, int indent) const override {
     pad(os, indent);
-    os << "Var(" << name << ") @" << loc.line << ":" << loc.col << "\n";
-    if (init)
+
+    if (arraySize > 0) {
+      os << "ArrayVar(" << name << "[" << arraySize << "]) @" << loc.line << ":"
+         << loc.col << "\n";
+    } else {
+      os << "Var(" << name << ") @" << loc.line << ":" << loc.col << "\n";
+    }
+
+    if (init) {
       init->dump(os, indent + 2);
-    else {
+    } else if (arraySize == 0) {
       pad(os, indent + 2);
       os << "(no init)\n";
     }
   }
 };
-
 struct PrintStmt : Stmt {
   std::unique_ptr<Expr> expr;
   explicit PrintStmt(std::unique_ptr<Expr> e) : expr(std::move(e)) {}

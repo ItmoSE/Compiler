@@ -107,12 +107,40 @@ private:
 
   std::unique_ptr<Stmt> parseVarDecl() {
     Token name = consumeIdent("expected variable name");
+    std::size_t arraySize = 0;
+
+    if (matchSym("[")) {
+      if (cur().kind != TokenKind::Number) {
+        errorHere("expected array size");
+      }
+
+      Token sizeTok = advance();
+      long long parsedSize = std::stoll(sizeTok.lexeme);
+
+      if (parsedSize <= 0) {
+        throw std::runtime_error("array size must be positive at " +
+                                 std::to_string(sizeTok.line) + ":" +
+                                 std::to_string(sizeTok.col));
+      }
+
+      arraySize = static_cast<std::size_t>(parsedSize);
+      consumeSym("]", "expected ']' after array size");
+    }
+
     std::unique_ptr<Expr> init;
-    if (matchSym("="))
+    if (matchSym("=")) {
+      if (arraySize > 0) {
+        errorHere("array declaration cannot have initializer");
+      }
+
       init = parseExpression();
+    }
+
     consumeSym(";", "expected ';' after variable declaration");
-    return std::make_unique<VarStmt>(
-        name.lexeme, SourceLoc{name.line, name.col}, std::move(init));
+
+    return std::make_unique<VarStmt>(name.lexeme,
+                                     SourceLoc{name.line, name.col},
+                                     std::move(init), arraySize);
   }
 
   std::unique_ptr<Stmt> parseStatement() {
@@ -196,6 +224,17 @@ private:
         return std::make_unique<AssignExpr>(std::move(name), loc,
                                             std::move(value));
       }
+
+      // or indexed array element: a[i] = value
+      if (auto *idx = dynamic_cast<IndexExpr *>(lhs.get())) {
+        std::string name = idx->name;
+        SourceLoc loc = idx->loc;
+        auto index = std::move(idx->index);
+
+        return std::make_unique<ArrayAssignExpr>(
+            std::move(name), loc, std::move(index), std::move(value));
+      }
+
       errorHere("invalid assignment target");
     }
 
@@ -258,27 +297,45 @@ private:
   std::unique_ptr<Expr> parseCall() {
     auto e = parsePrimary();
 
-    while (matchSym("(")) {
-      auto *id = dynamic_cast<IdentExpr *>(e.get());
-      if (!id)
-        errorHere("only named functions can be called");
+    while (true) {
+      if (matchSym("(")) {
+        auto *id = dynamic_cast<IdentExpr *>(e.get());
+        if (!id)
+          errorHere("only named functions can be called");
 
-      std::vector<std::unique_ptr<Expr>> args;
-      if (!checkSym(")")) {
-        do {
-          args.push_back(parseExpression());
-        } while (matchSym(","));
+        std::vector<std::unique_ptr<Expr>> args;
+        if (!checkSym(")")) {
+          do {
+            args.push_back(parseExpression());
+          } while (matchSym(","));
+        }
+        consumeSym(")", "expected ')' after function arguments");
+
+        std::string callee = id->name;
+        SourceLoc loc = id->loc;
+        e = std::make_unique<CallExpr>(std::move(callee), loc, std::move(args));
+        continue;
       }
-      consumeSym(")", "expected ')' after function arguments");
 
-      std::string callee = id->name;
-      SourceLoc loc = id->loc;
-      e = std::make_unique<CallExpr>(std::move(callee), loc, std::move(args));
+      if (matchSym("[")) {
+        auto *id = dynamic_cast<IdentExpr *>(e.get());
+        if (!id)
+          errorHere("only named arrays can be indexed");
+
+        auto index = parseExpression();
+        consumeSym("]", "expected ']' after array index");
+
+        std::string name = id->name;
+        SourceLoc loc = id->loc;
+        e = std::make_unique<IndexExpr>(std::move(name), loc, std::move(index));
+        continue;
+      }
+
+      break;
     }
 
     return e;
   }
-
   std::unique_ptr<Expr> parsePrimary() {
     if (cur().kind == TokenKind::Number) {
       auto s = advance().lexeme;

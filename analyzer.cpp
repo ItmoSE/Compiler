@@ -76,6 +76,31 @@ void Analyzer::declareVar(const std::string &name, SourceLoc loc,
   scope.emplace(name, Symbol{loc, type, false});
 }
 
+void Analyzer::declareArray(const std::string &name, SourceLoc loc,
+                            std::size_t arraySize) {
+  auto &scope = scopes_.back();
+
+  auto it = scope.find(name);
+  if (it != scope.end()) {
+    std::cerr << "Error: redeclaration of variable '" << name << "' at "
+              << loc.line << ":" << loc.col << " (previous declaration at "
+              << it->second.declLoc.line << ":" << it->second.declLoc.col
+              << ")\n";
+    errors_++;
+    return;
+  }
+
+  Symbol sym;
+  sym.declLoc = loc;
+  sym.type = TypeKind::Array;
+  sym.used = false;
+  sym.isArray = true;
+  sym.arraySize = arraySize;
+  sym.elementType = TypeKind::Unknown;
+
+  scope.emplace(name, std::move(sym));
+}
+
 void Analyzer::declareFunction(const FuncStmt *fn) {
   auto it = functions_.find(fn->name);
   if (it != functions_.end()) {
@@ -111,6 +136,13 @@ TypeKind Analyzer::markUsedAndGetType(const std::string &name,
     return TypeKind::Error;
   }
   sym->used = true;
+
+  if (sym->isArray) {
+    reportError(useLoc, "array '" + name +
+                            "' cannot be used as a scalar value; use indexing");
+    return TypeKind::Error;
+  }
+
   return sym->type;
 }
 
@@ -121,6 +153,12 @@ void Analyzer::assignTo(const std::string &name, SourceLoc loc,
     std::cerr << "Error: assignment to undeclared variable '" << name << "' at "
               << loc.line << ":" << loc.col << "\n";
     errors_++;
+    return;
+  }
+
+  if (sym->isArray) {
+    reportError(loc, "cannot assign to whole array '" + name +
+                         "'; assign to an indexed element");
     return;
   }
 
@@ -148,6 +186,84 @@ bool Analyzer::isComparisonOp(const std::string &op) const {
 
 bool Analyzer::isEqualityOp(const std::string &op) const {
   return op == "==" || op == "!=";
+}
+
+TypeKind Analyzer::arrayElementType(const IndexExpr *x) {
+  Symbol *sym = resolve(x->name);
+  if (!sym) {
+    reportError(x->loc, "use of undeclared array '" + x->name + "'");
+    analyzeExpr(x->index.get());
+    return TypeKind::Error;
+  }
+
+  sym->used = true;
+
+  if (!sym->isArray) {
+    reportError(x->loc, "variable '" + x->name + "' is not an array");
+    analyzeExpr(x->index.get());
+    return TypeKind::Error;
+  }
+
+  TypeKind indexType = analyzeExpr(x->index.get());
+  if (indexType != TypeKind::Int && indexType != TypeKind::Error &&
+      indexType != TypeKind::Unknown) {
+    reportError(x->loc, "array index must be int, got " +
+                            std::string(typeName(indexType)));
+    return TypeKind::Error;
+  }
+
+  return sym->elementType;
+}
+
+TypeKind Analyzer::assignArrayElement(const ArrayAssignExpr *x) {
+  Symbol *sym = resolve(x->name);
+  if (!sym) {
+    reportError(x->loc, "assignment to undeclared array '" + x->name + "'");
+    analyzeExpr(x->index.get());
+    analyzeExpr(x->value.get());
+    return TypeKind::Error;
+  }
+
+  sym->used = true;
+
+  if (!sym->isArray) {
+    reportError(x->loc, "variable '" + x->name + "' is not an array");
+    analyzeExpr(x->index.get());
+    analyzeExpr(x->value.get());
+    return TypeKind::Error;
+  }
+
+  TypeKind indexType = analyzeExpr(x->index.get());
+  if (indexType != TypeKind::Int && indexType != TypeKind::Error &&
+      indexType != TypeKind::Unknown) {
+    reportError(x->loc, "array index must be int, got " +
+                            std::string(typeName(indexType)));
+  }
+
+  TypeKind valueType = analyzeExpr(x->value.get());
+  if (valueType == TypeKind::Error) {
+    return TypeKind::Error;
+  }
+
+  if (valueType == TypeKind::Array) {
+    reportError(x->loc, "arrays cannot be stored inside arrays");
+    return TypeKind::Error;
+  }
+
+  if (sym->elementType == TypeKind::Unknown) {
+    sym->elementType = valueType;
+    return valueType;
+  }
+
+  if (sym->elementType != valueType) {
+    reportError(x->loc, "cannot assign value of type '" +
+                            std::string(typeName(valueType)) + "' to array '" +
+                            x->name + "' with element type '" +
+                            std::string(typeName(sym->elementType)) + "'");
+    return TypeKind::Error;
+  }
+
+  return sym->elementType;
 }
 
 TypeKind Analyzer::analyzeExpr(const Expr *e) {
@@ -273,6 +389,14 @@ TypeKind Analyzer::analyzeExpr(const Expr *e) {
     return it->second.returnType;
   }
 
+  if (auto *x = dynamic_cast<const IndexExpr *>(e)) {
+    return arrayElementType(x);
+  }
+
+  if (auto *x = dynamic_cast<const ArrayAssignExpr *>(e)) {
+    return assignArrayElement(x);
+  }
+
   if (auto *x = dynamic_cast<const AssignExpr *>(e)) {
     TypeKind valueType = analyzeExpr(x->value.get());
     assignTo(x->name, x->loc, valueType);
@@ -351,6 +475,11 @@ void Analyzer::analyzeStmt(const Stmt *st) {
   }
 
   if (auto *s = dynamic_cast<const VarStmt *>(st)) {
+    if (s->arraySize > 0) {
+      declareArray(s->name, s->loc, s->arraySize);
+      return;
+    }
+
     TypeKind initType = TypeKind::Unknown;
     if (s->init) {
       initType = analyzeExpr(s->init.get());

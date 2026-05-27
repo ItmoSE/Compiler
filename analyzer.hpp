@@ -13,6 +13,10 @@ public:
     SourceLoc declLoc;
     TypeKind type = TypeKind::Unknown;
     bool used = false;
+
+    bool isArray = false;
+    std::size_t arraySize = 0;
+    TypeKind elementType = TypeKind::Unknown;
   };
 
   struct FunctionSymbol {
@@ -42,10 +46,14 @@ private:
   void reportError(SourceLoc loc, const std::string &msg);
 
   void declareVar(const std::string &name, SourceLoc loc, TypeKind type);
+  void declareArray(const std::string &name, SourceLoc loc,
+                    std::size_t arraySize);
   void declareFunction(const FuncStmt *fn);
   Symbol *resolve(const std::string &name);
   TypeKind markUsedAndGetType(const std::string &name, SourceLoc useLoc);
   void assignTo(const std::string &name, SourceLoc loc, TypeKind rhsType);
+  TypeKind arrayElementType(const IndexExpr *x);
+  TypeKind assignArrayElement(const ArrayAssignExpr *x);
 
   bool isComparisonOp(const std::string &op) const;
   bool isEqualityOp(const std::string &op) const;
