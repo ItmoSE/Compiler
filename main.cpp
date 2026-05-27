@@ -2,6 +2,7 @@
 #include "ast.hpp"
 #include "interpreter.hpp"
 #include "lexer.hpp"
+#include "optimizer.hpp"
 #include "parser.hpp"
 
 #include <fstream>
@@ -58,6 +59,16 @@ int main(int argc, char **argv) {
       std::cerr << "Execution aborted due to semantic errors\n";
       return 1;
     }
+
+    // 6) compile-time optimization: constant folding
+    Optimizer opt;
+    opt.optimize(prog);
+
+    std::cout << "\n=== OPTIMIZED AST ===\n";
+    for (auto &st : prog) {
+      st->dump(std::cout, 0);
+    }
+
     std::cout << "\n=== EXECUTION ===\n";
     Interpreter it;
     it.execute(prog);

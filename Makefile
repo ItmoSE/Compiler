@@ -2,7 +2,7 @@ CXX      := g++
 CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -pedantic
 
 TARGET := app
-SRCS   := main.cpp lexer.cpp analyzer.cpp interpreter.cpp 
+SRCS   := main.cpp lexer.cpp analyzer.cpp optimizer.cpp interpreter.cpp 
 OBJS   := $(SRCS:.cpp=.o)
 
 all: $(TARGET)
@@ -10,7 +10,7 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-main.o: main.cpp lexer.hpp parser.hpp ast.hpp analyzer.hpp interpreter.hpp
+main.o: main.cpp lexer.hpp parser.hpp ast.hpp analyzer.hpp optimizer.hpp interpreter.hpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:

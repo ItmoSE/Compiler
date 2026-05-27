@@ -1,0 +1,9 @@
+var foldedInt = 2 + 3 * 4;
+print foldedInt;
+
+var foldedStr = "hello, " + "world";
+print foldedStr;
+
+print 10 > 3;
+print !false;
+print 2 + 3 == 5;
