@@ -108,6 +108,22 @@ struct BinaryExpr : Expr {
   }
 };
 
+struct CallExpr : Expr {
+  std::string callee;
+  SourceLoc loc;
+  std::vector<std::unique_ptr<Expr>> args;
+
+  CallExpr(std::string c, SourceLoc l, std::vector<std::unique_ptr<Expr>> a)
+      : callee(std::move(c)), loc(l), args(std::move(a)) {}
+
+  void dump(std::ostream &os, int indent) const override {
+    pad(os, indent);
+    os << "Call(" << callee << ") @" << loc.line << ":" << loc.col << "\n";
+    for (auto &arg : args)
+      arg->dump(os, indent + 2);
+  }
+};
+
 struct AssignExpr : Expr {
   std::string name;
   SourceLoc loc;
@@ -124,9 +140,48 @@ struct AssignExpr : Expr {
 };
 
 // ---------- Stmt ----------
+struct BlockStmt;
+
 struct Stmt {
   virtual ~Stmt() = default;
   virtual void dump(std::ostream &os, int indent = 0) const = 0;
+};
+
+struct FuncStmt : Stmt {
+  std::string name;
+  SourceLoc loc;
+  std::vector<std::string> params;
+  std::unique_ptr<Stmt> body;
+
+  FuncStmt(std::string n, SourceLoc l, std::vector<std::string> p,
+           std::unique_ptr<Stmt> b)
+      : name(std::move(n)), loc(l), params(std::move(p)), body(std::move(b)) {}
+
+  void dump(std::ostream &os, int indent) const override {
+    pad(os, indent);
+    os << "Func(" << name << ") @" << loc.line << ":" << loc.col << "\n";
+    pad(os, indent + 2);
+    os << "Params:";
+    for (const auto &p : params)
+      os << " " << p;
+    os << "\n";
+    body->dump(os, indent + 2);
+  }
+};
+
+struct ReturnStmt : Stmt {
+  SourceLoc loc;
+  std::unique_ptr<Expr> value;
+
+  ReturnStmt(SourceLoc l, std::unique_ptr<Expr> v)
+      : loc(l), value(std::move(v)) {}
+
+  void dump(std::ostream &os, int indent) const override {
+    pad(os, indent);
+    os << "Return @" << loc.line << ":" << loc.col << "\n";
+    if (value)
+      value->dump(os, indent + 2);
+  }
 };
 
 struct VarStmt : Stmt {

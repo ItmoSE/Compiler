@@ -91,11 +91,12 @@ std::vector<Token> Lexer::tokenize() {
       t.line = startLine;
       t.col = startCol;
 
-      t.kind = (t.lexeme == "var" || t.lexeme == "while" || t.lexeme == "if" ||
-                t.lexeme == "else" || t.lexeme == "print" ||
-                t.lexeme == "true" || t.lexeme == "false")
-                   ? TokenKind::Keyword
-                   : TokenKind::Identifier;
+      t.kind =
+          (t.lexeme == "var" || t.lexeme == "fun" || t.lexeme == "return" ||
+           t.lexeme == "while" || t.lexeme == "if" || t.lexeme == "else" ||
+           t.lexeme == "print" || t.lexeme == "true" || t.lexeme == "false")
+              ? TokenKind::Keyword
+              : TokenKind::Identifier;
 
       out.push_back(std::move(t));
       continue;

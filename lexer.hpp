@@ -25,6 +25,8 @@ inline static const char *kindName(TokenKind k) {
     return "Number";
   case TokenKind::String:
     return "String";
+  case TokenKind::Keyword:
+    return "Keyword";
   default:
     return "Other";
   }

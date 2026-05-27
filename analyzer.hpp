@@ -15,6 +15,13 @@ public:
     bool used = false;
   };
 
+  struct FunctionSymbol {
+    SourceLoc declLoc;
+    std::size_t arity = 0;
+    TypeKind returnType = TypeKind::Unknown;
+    bool used = false;
+  };
+
   void analyze(const std::vector<std::unique_ptr<Stmt>> &program);
 
   int warningCount() const;
@@ -23,6 +30,9 @@ public:
 
 private:
   std::vector<std::unordered_map<std::string, Symbol>> scopes_;
+  std::unordered_map<std::string, FunctionSymbol> functions_;
+  FunctionSymbol *currentFunction_ = nullptr;
+  int functionDepth_ = 0;
   int warnings_ = 0;
   int errors_ = 0;
 
@@ -32,6 +42,7 @@ private:
   void reportError(SourceLoc loc, const std::string &msg);
 
   void declareVar(const std::string &name, SourceLoc loc, TypeKind type);
+  void declareFunction(const FuncStmt *fn);
   Symbol *resolve(const std::string &name);
   TypeKind markUsedAndGetType(const std::string &name, SourceLoc useLoc);
   void assignTo(const std::string &name, SourceLoc loc, TypeKind rhsType);

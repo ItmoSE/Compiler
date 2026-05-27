@@ -11,6 +11,7 @@
 #include <vector>
 
 class Parser {
+
 public:
   explicit Parser(std::vector<Token> toks) : toks_(std::move(toks)) {}
 
@@ -76,9 +77,32 @@ private:
 
   // -------- declarations / statements --------
   std::unique_ptr<Stmt> parseDeclaration() {
+    if (matchKw("fun"))
+      return parseFuncDecl();
     if (matchKw("var"))
       return parseVarDecl();
     return parseStatement();
+  }
+
+  std::unique_ptr<Stmt> parseFuncDecl() {
+    Token name = consumeIdent("expected function name");
+    consumeSym("(", "expected '(' after function name");
+
+    std::vector<std::string> params;
+    if (!checkSym(")")) {
+      do {
+        Token param = consumeIdent("expected parameter name");
+        params.push_back(param.lexeme);
+      } while (matchSym(","));
+    }
+
+    consumeSym(")", "expected ')' after function parameters");
+    consumeSym("{", "expected '{' before function body");
+    auto body = parseBlock();
+
+    return std::make_unique<FuncStmt>(name.lexeme,
+                                      SourceLoc{name.line, name.col},
+                                      std::move(params), std::move(body));
   }
 
   std::unique_ptr<Stmt> parseVarDecl() {
@@ -92,6 +116,8 @@ private:
   }
 
   std::unique_ptr<Stmt> parseStatement() {
+    if (matchKw("return"))
+      return parseReturn();
     if (matchKw("while"))
       return parseWhile();
     if (matchKw("if"))
@@ -101,6 +127,16 @@ private:
     if (matchSym("{"))
       return parseBlock();
     return parseExprStmt();
+  }
+
+  std::unique_ptr<Stmt> parseReturn() {
+    Token ret = prev();
+    std::unique_ptr<Expr> value;
+    if (!checkSym(";"))
+      value = parseExpression();
+    consumeSym(";", "expected ';' after return value");
+    return std::make_unique<ReturnStmt>(SourceLoc{ret.line, ret.col},
+                                        std::move(value));
   }
 
   std::unique_ptr<Stmt> parseWhile() {
@@ -216,7 +252,31 @@ private:
       auto rhs = parseUnary();
       return std::make_unique<UnaryExpr>(std::move(op), std::move(rhs));
     }
-    return parsePrimary();
+    return parseCall();
+  }
+
+  std::unique_ptr<Expr> parseCall() {
+    auto e = parsePrimary();
+
+    while (matchSym("(")) {
+      auto *id = dynamic_cast<IdentExpr *>(e.get());
+      if (!id)
+        errorHere("only named functions can be called");
+
+      std::vector<std::unique_ptr<Expr>> args;
+      if (!checkSym(")")) {
+        do {
+          args.push_back(parseExpression());
+        } while (matchSym(","));
+      }
+      consumeSym(")", "expected ')' after function arguments");
+
+      std::string callee = id->name;
+      SourceLoc loc = id->loc;
+      e = std::make_unique<CallExpr>(std::move(callee), loc, std::move(args));
+    }
+
+    return e;
   }
 
   std::unique_ptr<Expr> parsePrimary() {

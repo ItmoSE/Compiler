@@ -85,12 +85,33 @@ void Interpreter::RuntimeEnvironment::assign(const std::string &name,
 Interpreter::Interpreter() = default;
 
 void Interpreter::execute(const std::vector<std::unique_ptr<Stmt>> &program) {
+  // Register functions before executing top-level statements. Function bodies
+  // are executed only when the function is called.
   for (const auto &st : program) {
+    if (auto *fn = dynamic_cast<const FuncStmt *>(st.get())) {
+      functions_[fn->name] = fn;
+    }
+  }
+
+  for (const auto &st : program) {
+    if (dynamic_cast<const FuncStmt *>(st.get()))
+      continue;
     executeStmt(st.get());
   }
 }
 
 void Interpreter::executeStmt(const Stmt *st) {
+  if (dynamic_cast<const FuncStmt *>(st)) {
+    return;
+  }
+
+  if (auto *s = dynamic_cast<const ReturnStmt *>(st)) {
+    Value v = defaultValue();
+    if (s->value)
+      v = evalExpr(s->value.get());
+    throw ReturnSignal{std::move(v)};
+  }
+
   if (auto *s = dynamic_cast<const VarStmt *>(st)) {
     Value init = defaultValue();
     if (s->init) {
@@ -113,10 +134,15 @@ void Interpreter::executeStmt(const Stmt *st) {
 
   if (auto *s = dynamic_cast<const BlockStmt *>(st)) {
     env_.beginScope();
-    for (const auto &child : s->stmts) {
-      executeStmt(child.get());
+    try {
+      for (const auto &child : s->stmts) {
+        executeStmt(child.get());
+      }
+      env_.endScope();
+    } catch (...) {
+      env_.endScope();
+      throw;
     }
-    env_.endScope();
     return;
   }
 
@@ -173,6 +199,10 @@ Interpreter::Value Interpreter::evalExpr(const Expr *e) {
                                "'");
     }
     return *v;
+  }
+
+  if (auto *x = dynamic_cast<const CallExpr *>(e)) {
+    return callFunction(x);
   }
 
   if (auto *x = dynamic_cast<const AssignExpr *>(e)) {
@@ -267,6 +297,50 @@ Interpreter::Value Interpreter::evalExpr(const Expr *e) {
   }
 
   throw std::runtime_error("runtime error: unknown expression node");
+}
+
+Interpreter::Value Interpreter::callFunction(const CallExpr *call) {
+  auto it = functions_.find(call->callee);
+  if (it == functions_.end()) {
+    throw std::runtime_error("runtime error: undefined function '" +
+                             call->callee + "'");
+  }
+
+  const FuncStmt *fn = it->second;
+  if (call->args.size() != fn->params.size()) {
+    throw std::runtime_error("runtime error: function '" + call->callee +
+                             "' expects " + std::to_string(fn->params.size()) +
+                             " arguments, got " +
+                             std::to_string(call->args.size()));
+  }
+
+  std::vector<Value> argValues;
+  argValues.reserve(call->args.size());
+  for (const auto &arg : call->args)
+    argValues.push_back(evalExpr(arg.get()));
+
+  env_.beginScope();
+  try {
+    for (std::size_t i = 0; i < fn->params.size(); ++i) {
+      env_.define(fn->params[i], std::move(argValues[i]));
+    }
+
+    if (auto *body = dynamic_cast<const BlockStmt *>(fn->body.get())) {
+      for (const auto &child : body->stmts)
+        executeStmt(child.get());
+    } else {
+      executeStmt(fn->body.get());
+    }
+
+    env_.endScope();
+    return defaultValue();
+  } catch (const ReturnSignal &ret) {
+    env_.endScope();
+    return ret.value;
+  } catch (...) {
+    env_.endScope();
+    throw;
+  }
 }
 
 std::string Interpreter::valueToString(const Value &v) {

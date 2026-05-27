@@ -41,10 +41,16 @@ public:
   void execute(const std::vector<std::unique_ptr<Stmt>> &program);
 
 private:
+  struct ReturnSignal {
+    Value value;
+  };
+
   RuntimeEnvironment env_;
+  std::unordered_map<std::string, const FuncStmt *> functions_;
 
   void executeStmt(const Stmt *st);
   Value evalExpr(const Expr *e);
+  Value callFunction(const CallExpr *call);
 
   static std::string valueToString(const Value &v);
   static void requireInts(const Value &lhs, const Value &rhs,

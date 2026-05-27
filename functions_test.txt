@@ -1,0 +1,14 @@
+fun add(a, b) {
+  return a + b;
+}
+
+fun fact(n) {
+  if (n <= 1) {
+    return 1;
+  }
+  return n * fact(n - 1);
+}
+
+var x = add(2, 3);
+print x;
+print fact(5);

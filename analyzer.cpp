@@ -5,9 +5,27 @@
 
 void Analyzer::analyze(const std::vector<std::unique_ptr<Stmt>> &program) {
   beginScope();
+
+  // First pass: register all top-level functions, so calls can reference
+  // functions declared later in the file.
+  for (const auto &st : program) {
+    if (auto *fn = dynamic_cast<const FuncStmt *>(st.get())) {
+      declareFunction(fn);
+    }
+  }
+
   for (const auto &st : program) {
     analyzeStmt(st.get());
   }
+
+  for (const auto &[name, fn] : functions_) {
+    if (!fn.used) {
+      std::cerr << "Warning: unused function '" << name << "' declared at "
+                << fn.declLoc.line << ":" << fn.declLoc.col << "\n";
+      warnings_++;
+    }
+  }
+
   endScope();
 }
 
@@ -56,6 +74,21 @@ void Analyzer::declareVar(const std::string &name, SourceLoc loc,
   }
 
   scope.emplace(name, Symbol{loc, type, false});
+}
+
+void Analyzer::declareFunction(const FuncStmt *fn) {
+  auto it = functions_.find(fn->name);
+  if (it != functions_.end()) {
+    std::cerr << "Error: redeclaration of function '" << fn->name << "' at "
+              << fn->loc.line << ":" << fn->loc.col
+              << " (previous declaration at " << it->second.declLoc.line << ":"
+              << it->second.declLoc.col << ")\n";
+    errors_++;
+    return;
+  }
+
+  functions_.emplace(fn->name, FunctionSymbol{fn->loc, fn->params.size(),
+                                              TypeKind::Unknown, false});
 }
 
 Analyzer::Symbol *Analyzer::resolve(const std::string &name) {
@@ -138,7 +171,8 @@ TypeKind Analyzer::analyzeExpr(const Expr *e) {
     TypeKind rhs = analyzeExpr(x->rhs.get());
 
     if (x->op == "-") {
-      if (rhs != TypeKind::Int && rhs != TypeKind::Error) {
+      if (rhs != TypeKind::Int && rhs != TypeKind::Error &&
+          rhs != TypeKind::Unknown) {
         reportError(SourceLoc{},
                     "unary '-' expects int, got " + std::string(typeName(rhs)));
         return TypeKind::Error;
@@ -147,7 +181,8 @@ TypeKind Analyzer::analyzeExpr(const Expr *e) {
     }
 
     if (x->op == "!") {
-      if (rhs != TypeKind::Bool && rhs != TypeKind::Error) {
+      if (rhs != TypeKind::Bool && rhs != TypeKind::Error &&
+          rhs != TypeKind::Unknown) {
         reportError(SourceLoc{}, "unary '!' expects bool, got " +
                                      std::string(typeName(rhs)));
         return TypeKind::Error;
@@ -169,38 +204,42 @@ TypeKind Analyzer::analyzeExpr(const Expr *e) {
 
     if (x->op == "+" || x->op == "-" || x->op == "*" || x->op == "/") {
       if (x->op == "+") {
-        if (lhs == TypeKind::Int && rhs == TypeKind::Int) {
+        if (lhs == TypeKind::Int && rhs == TypeKind::Int)
           return TypeKind::Int;
-        }
-        if (lhs == TypeKind::Str && rhs == TypeKind::Str) {
+        if (lhs == TypeKind::Str && rhs == TypeKind::Str)
           return TypeKind::Str;
+        if (lhs == TypeKind::Unknown || rhs == TypeKind::Unknown) {
+          if (lhs == TypeKind::Str || rhs == TypeKind::Str)
+            return TypeKind::Str;
+          if (lhs == TypeKind::Int || rhs == TypeKind::Int)
+            return TypeKind::Int;
+          return TypeKind::Unknown;
         }
 
         reportBinaryTypeError(x->op, lhs, rhs);
         return TypeKind::Error;
       }
 
-      if (lhs == TypeKind::Int && rhs == TypeKind::Int) {
+      if ((lhs == TypeKind::Int || lhs == TypeKind::Unknown) &&
+          (rhs == TypeKind::Int || rhs == TypeKind::Unknown))
         return TypeKind::Int;
-      }
 
       reportBinaryTypeError(x->op, lhs, rhs);
       return TypeKind::Error;
     }
 
     if (isComparisonOp(x->op)) {
-      if (lhs == TypeKind::Int && rhs == TypeKind::Int) {
+      if ((lhs == TypeKind::Int || lhs == TypeKind::Unknown) &&
+          (rhs == TypeKind::Int || rhs == TypeKind::Unknown))
         return TypeKind::Bool;
-      }
 
       reportBinaryTypeError(x->op, lhs, rhs);
       return TypeKind::Error;
     }
 
     if (isEqualityOp(x->op)) {
-      if (lhs == rhs) {
+      if (lhs == rhs || lhs == TypeKind::Unknown || rhs == TypeKind::Unknown)
         return TypeKind::Bool;
-      }
 
       reportBinaryTypeError(x->op, lhs, rhs);
       return TypeKind::Error;
@@ -208,6 +247,30 @@ TypeKind Analyzer::analyzeExpr(const Expr *e) {
 
     reportError(SourceLoc{}, "unknown binary operator '" + x->op + "'");
     return TypeKind::Error;
+  }
+
+  if (auto *x = dynamic_cast<const CallExpr *>(e)) {
+    auto it = functions_.find(x->callee);
+    if (it == functions_.end()) {
+      reportError(x->loc, "call to undeclared function '" + x->callee + "'");
+      for (const auto &arg : x->args)
+        analyzeExpr(arg.get());
+      return TypeKind::Error;
+    }
+
+    it->second.used = true;
+
+    if (x->args.size() != it->second.arity) {
+      reportError(x->loc, "function '" + x->callee + "' expects " +
+                              std::to_string(it->second.arity) +
+                              " arguments, got " +
+                              std::to_string(x->args.size()));
+    }
+
+    for (const auto &arg : x->args)
+      analyzeExpr(arg.get());
+
+    return it->second.returnType;
   }
 
   if (auto *x = dynamic_cast<const AssignExpr *>(e)) {
@@ -228,6 +291,65 @@ void Analyzer::reportBinaryTypeError(const std::string &op, TypeKind lhs,
 }
 
 void Analyzer::analyzeStmt(const Stmt *st) {
+  if (auto *s = dynamic_cast<const FuncStmt *>(st)) {
+    auto it = functions_.find(s->name);
+    if (it == functions_.end()) {
+      declareFunction(s);
+      it = functions_.find(s->name);
+      if (it == functions_.end())
+        return;
+    }
+
+    FunctionSymbol *previousFunction = currentFunction_;
+    currentFunction_ = &it->second;
+    functionDepth_++;
+
+    beginScope();
+    for (const auto &param : s->params) {
+      declareVar(param, s->loc, TypeKind::Unknown);
+    }
+
+    if (auto *body = dynamic_cast<const BlockStmt *>(s->body.get())) {
+      for (const auto &child : body->stmts) {
+        analyzeStmt(child.get());
+      }
+    } else {
+      analyzeStmt(s->body.get());
+    }
+
+    endScope();
+    functionDepth_--;
+    currentFunction_ = previousFunction;
+    return;
+  }
+
+  if (auto *s = dynamic_cast<const ReturnStmt *>(st)) {
+    if (functionDepth_ == 0 || currentFunction_ == nullptr) {
+      reportError(s->loc, "return outside function");
+      if (s->value)
+        analyzeExpr(s->value.get());
+      return;
+    }
+
+    TypeKind retType = TypeKind::Unknown;
+    if (s->value)
+      retType = analyzeExpr(s->value.get());
+
+    if (retType == TypeKind::Error)
+      return;
+
+    if (currentFunction_->returnType == TypeKind::Unknown) {
+      currentFunction_->returnType = retType;
+    } else if (currentFunction_->returnType != retType) {
+      reportError(s->loc,
+                  "inconsistent return type: previous return was '" +
+                      std::string(typeName(currentFunction_->returnType)) +
+                      "', current return is '" +
+                      std::string(typeName(retType)) + "'");
+    }
+    return;
+  }
+
   if (auto *s = dynamic_cast<const VarStmt *>(st)) {
     TypeKind initType = TypeKind::Unknown;
     if (s->init) {
