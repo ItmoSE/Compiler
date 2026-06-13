@@ -15,6 +15,10 @@ while (current < limit) {
     current = current + 1;
 }
 
+if (limit == 10 && current == 0){
+    print current * 200;
+}
+
 var x = 10;
 var y = 20;
 print x;

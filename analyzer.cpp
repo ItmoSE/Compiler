@@ -335,6 +335,15 @@ TypeKind Analyzer::analyzeExpr(const Expr *e) {
       return TypeKind::Error;
     }
 
+    if (x->op == "&&" || x->op == "||") {
+      if ((lhs == TypeKind::Bool || lhs == TypeKind::Unknown) &&
+          (rhs == TypeKind::Bool || rhs == TypeKind::Unknown))
+        return TypeKind::Bool;
+
+      reportBinaryTypeError(x->op, lhs, rhs);
+      return TypeKind::Error;
+    }
+
     if (x->op == "+" || x->op == "-" || x->op == "*" || x->op == "/") {
       if (x->op == "+") {
         if (lhs == TypeKind::Int && rhs == TypeKind::Int)

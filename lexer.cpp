@@ -123,7 +123,8 @@ std::vector<Token> Lexer::tokenize() {
     if (!isAtEnd()) {
       char b = peek();
       if ((a == '=' && b == '=') || (a == '!' && b == '=') ||
-          (a == '<' && b == '=') || (a == '>' && b == '=')) {
+          (a == '<' && b == '=') || (a == '>' && b == '=') ||
+          (a == '&' && b == '&') || (a == '|' && b == '|')) {
         s.push_back(advance());
       }
     }

@@ -212,7 +212,7 @@ private:
   std::unique_ptr<Expr> parseExpression() { return parseAssignment(); }
 
   std::unique_ptr<Expr> parseAssignment() {
-    auto lhs = parseEquality();
+    auto lhs = parseOr();
 
     if (matchSym("=")) {
       auto value = parseAssignment();
@@ -239,6 +239,28 @@ private:
     }
 
     return lhs;
+  }
+
+  std::unique_ptr<Expr> parseOr() {
+    auto e = parseAnd();
+    while (checkSym("||")) {
+      std::string op = advance().lexeme;
+      auto r = parseAnd();
+      e = std::make_unique<BinaryExpr>(std::move(op), std::move(e),
+                                       std::move(r));
+    }
+    return e;
+  }
+
+  std::unique_ptr<Expr> parseAnd() {
+    auto e = parseEquality();
+    while (checkSym("&&")) {
+      std::string op = advance().lexeme;
+      auto r = parseEquality();
+      e = std::make_unique<BinaryExpr>(std::move(op), std::move(e),
+                                       std::move(r));
+    }
+    return e;
   }
 
   std::unique_ptr<Expr> parseEquality() {

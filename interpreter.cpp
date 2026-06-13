@@ -326,6 +326,38 @@ Interpreter::Value Interpreter::evalExpr(const Expr *e) {
   }
 
   if (auto *x = dynamic_cast<const BinaryExpr *>(e)) {
+    if (x->op == "&&") {
+      Value lhs = evalExpr(x->lhs.get());
+      if (lhs.type != TypeKind::Bool) {
+        throw std::runtime_error("runtime error: operator '&&' expects bool operands");
+      }
+      if (!lhs.boolValue) {
+        return Value::makeBool(false);
+      }
+
+      Value rhs = evalExpr(x->rhs.get());
+      if (rhs.type != TypeKind::Bool) {
+        throw std::runtime_error("runtime error: operator '&&' expects bool operands");
+      }
+      return Value::makeBool(rhs.boolValue);
+    }
+
+    if (x->op == "||") {
+      Value lhs = evalExpr(x->lhs.get());
+      if (lhs.type != TypeKind::Bool) {
+        throw std::runtime_error("runtime error: operator '||' expects bool operands");
+      }
+      if (lhs.boolValue) {
+        return Value::makeBool(true);
+      }
+
+      Value rhs = evalExpr(x->rhs.get());
+      if (rhs.type != TypeKind::Bool) {
+        throw std::runtime_error("runtime error: operator '||' expects bool operands");
+      }
+      return Value::makeBool(rhs.boolValue);
+    }
+
     Value lhs = evalExpr(x->lhs.get());
     Value rhs = evalExpr(x->rhs.get());
 
