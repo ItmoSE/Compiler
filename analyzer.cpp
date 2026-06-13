@@ -60,7 +60,7 @@ void Analyzer::reportError(SourceLoc loc, const std::string &msg) {
 }
 
 void Analyzer::declareVar(const std::string &name, SourceLoc loc,
-                          TypeKind type) {
+                          TypeKind type, bool initialized) {
   auto &scope = scopes_.back();
 
   auto it = scope.find(name);
@@ -73,7 +73,13 @@ void Analyzer::declareVar(const std::string &name, SourceLoc loc,
     return;
   }
 
-  scope.emplace(name, Symbol{loc, type, false});
+  Symbol sym;
+  sym.declLoc = loc;
+  sym.type = type;
+  sym.used = false;
+  sym.initialized = initialized;
+
+  scope.emplace(name, std::move(sym));
 }
 
 void Analyzer::declareArray(const std::string &name, SourceLoc loc,
@@ -94,6 +100,7 @@ void Analyzer::declareArray(const std::string &name, SourceLoc loc,
   sym.declLoc = loc;
   sym.type = TypeKind::Array;
   sym.used = false;
+  sym.initialized = true;
   sym.isArray = true;
   sym.arraySize = arraySize;
   sym.elementType = TypeKind::Unknown;
@@ -130,12 +137,18 @@ TypeKind Analyzer::markUsedAndGetType(const std::string &name,
                                       SourceLoc useLoc) {
   Symbol *sym = resolve(name);
   if (!sym) {
-    std::cerr << "Error: use of undeclared variable '" << name << "' at "
+    std::cerr << "Warning: use of undeclared variable '" << name << "' at "
               << useLoc.line << ":" << useLoc.col << "\n";
-    errors_++;
+    warnings_++;
     return TypeKind::Error;
   }
   sym->used = true;
+
+  if (!sym->initialized) {
+    std::cerr << "Warning: use of uninitialized variable '" << name << "' at "
+              << useLoc.line << ":" << useLoc.col << "\n";
+    warnings_++;
+  }
 
   if (sym->isArray) {
     reportError(useLoc, "array '" + name +
@@ -150,9 +163,9 @@ void Analyzer::assignTo(const std::string &name, SourceLoc loc,
                         TypeKind rhsType) {
   Symbol *sym = resolve(name);
   if (!sym) {
-    std::cerr << "Error: assignment to undeclared variable '" << name << "' at "
+    std::cerr << "Warning: assignment to undeclared variable '" << name << "' at "
               << loc.line << ":" << loc.col << "\n";
-    errors_++;
+    warnings_++;
     return;
   }
 
@@ -168,6 +181,7 @@ void Analyzer::assignTo(const std::string &name, SourceLoc loc,
 
   if (sym->type == TypeKind::Unknown) {
     sym->type = rhsType;
+    sym->initialized = true;
     return;
   }
 
@@ -177,7 +191,10 @@ void Analyzer::assignTo(const std::string &name, SourceLoc loc,
               << typeName(sym->type) << "' at " << loc.line << ":" << loc.col
               << "\n";
     errors_++;
+    return;
   }
+
+  sym->initialized = true;
 }
 
 bool Analyzer::isComparisonOp(const std::string &op) const {
@@ -430,7 +447,7 @@ void Analyzer::analyzeStmt(const Stmt *st) {
 
     beginScope();
     for (const auto &param : s->params) {
-      declareVar(param, s->loc, TypeKind::Unknown);
+      declareVar(param, s->loc, TypeKind::Unknown, true);
     }
 
     if (auto *body = dynamic_cast<const BlockStmt *>(s->body.get())) {
@@ -484,7 +501,7 @@ void Analyzer::analyzeStmt(const Stmt *st) {
     if (s->init) {
       initType = analyzeExpr(s->init.get());
     }
-    declareVar(s->name, s->loc, initType);
+    declareVar(s->name, s->loc, initType, s->init != nullptr);
     return;
   }
 

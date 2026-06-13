@@ -13,6 +13,7 @@ public:
     SourceLoc declLoc;
     TypeKind type = TypeKind::Unknown;
     bool used = false;
+    bool initialized = false;
 
     bool isArray = false;
     std::size_t arraySize = 0;
@@ -45,7 +46,8 @@ private:
 
   void reportError(SourceLoc loc, const std::string &msg);
 
-  void declareVar(const std::string &name, SourceLoc loc, TypeKind type);
+  void declareVar(const std::string &name, SourceLoc loc, TypeKind type,
+                  bool initialized);
   void declareArray(const std::string &name, SourceLoc loc,
                     std::size_t arraySize);
   void declareFunction(const FuncStmt *fn);
