@@ -1,43 +1,103 @@
-var limit = 10;
-var current = 0;
-var prefix = "step: ";
-var some_other_unused_variable;
-var enabled = true;
+var unused_for_warning;
 
-while (current < limit) {
-    if (enabled != false) {
-        if (current == 5) {
-            print current * 100;
-        } else {
-            print current;
-        }
-    }
-    current = current + 1;
+var n = 5;
+var foldedNumber = 2 + 3 * 4;
+var foldedString = "hello, " + "world";
+var foldedBool = !false;
+
+print foldedNumber;
+print foldedString;
+print foldedBool;
+print true || (1 / 0 == 0);
+print false && (1 / 0 == 0);
+print n == 5;
+print n >= 3;
+
+if (true) {
+    print "if true branch";
+} else {
+    print "dead if branch";
 }
 
-if (limit == 10 && current == 0){
-    print current * 200;
+if (false) {
+    print "dead false branch";
+} else {
+    print "else branch";
 }
 
-var x = 10;
-var y = 20;
-print x;
+while (false) {
+    print "dead while body";
+}
+
+var i = 0;
+var sum = 0;
+
+while (i < n) {
+    sum = sum + i;
+    i = i + 1;
+}
+
+print sum;
 
 {
-    var z = 5;
-    print z + 1;
+    var scoped = 10;
+    print scoped + 1;
 }
 
-y = 7;
+fun add(a, b) {
+    return a + b;
+    print "dead after return in add";
+}
 
-var s1 = "hello, ";
-var s2 = "world";
-var s3 = s1 + s2;
-print s3;
+fun fact(x) {
+    if (x <= 1) {
+        return 1;
+        print "dead after base return";
+    }
 
-var b1 = true;
-var b2 = false;
-print !b2;
-print b1 != b2;
-print x < y;
-print x == 10;
+    return x * fact(x - 1);
+    print "dead after recursive return";
+}
+
+print add(2, 3);
+print fact(5);
+
+var nums[5];
+nums[0] = 5;
+nums[1] = 1;
+nums[2] = 4;
+nums[3] = 2;
+nums[4] = 3;
+
+var outer = 0;
+while (outer < 5) {
+    var inner = 0;
+
+    while (inner < 4) {
+        if (nums[inner] > nums[inner + 1]) {
+            var temp = nums[inner];
+            nums[inner] = nums[inner + 1];
+            nums[inner + 1] = temp;
+        }
+
+        inner = inner + 1;
+    }
+
+    outer = outer + 1;
+}
+
+print nums[0];
+print nums[1];
+print nums[2];
+print nums[3];
+print nums[4];
+
+var words[2];
+words[0] = "compiler";
+words[1] = "labs";
+print words[0] + " " + words[1];
+
+var flags[2];
+flags[0] = true;
+flags[1] = false;
+print flags[0] && !flags[1];

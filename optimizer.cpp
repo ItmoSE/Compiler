@@ -3,9 +3,7 @@
 #include <utility>
 
 void Optimizer::optimize(std::vector<std::unique_ptr<Stmt>> &program) {
-  for (auto &stmt : program) {
-    optimizeStmt(stmt.get());
-  }
+  optimizeStmtList(program);
 }
 
 bool Optimizer::isLiteral(const Expr *expr) {
@@ -143,7 +141,20 @@ Optimizer::tryFoldBinary(std::unique_ptr<BinaryExpr> expr) {
   }
 
   if (auto *lhs = dynamic_cast<BoolExpr *>(expr->lhs.get())) {
+    if (expr->op == "&&" && !lhs->value) {
+      return std::make_unique<BoolExpr>(false);
+    }
+    if (expr->op == "||" && lhs->value) {
+      return std::make_unique<BoolExpr>(true);
+    }
+
     if (auto *rhs = dynamic_cast<BoolExpr *>(expr->rhs.get())) {
+      if (expr->op == "&&") {
+        return std::make_unique<BoolExpr>(lhs->value && rhs->value);
+      }
+      if (expr->op == "||") {
+        return std::make_unique<BoolExpr>(lhs->value || rhs->value);
+      }
       if (expr->op == "==") {
         return std::make_unique<BoolExpr>(lhs->value == rhs->value);
       }
@@ -156,59 +167,109 @@ Optimizer::tryFoldBinary(std::unique_ptr<BinaryExpr> expr) {
   return expr;
 }
 
-void Optimizer::optimizeStmt(Stmt *stmt) {
+void Optimizer::optimizeStmtList(std::vector<std::unique_ptr<Stmt>> &stmts) {
+  std::vector<std::unique_ptr<Stmt>> optimized;
+  optimized.reserve(stmts.size());
+
+  for (auto &stmt : stmts) {
+    auto next = optimizeStmt(std::move(stmt));
+    if (!next) {
+      continue;
+    }
+
+    bool stopsExecution = dynamic_cast<ReturnStmt *>(next.get()) != nullptr;
+    optimized.push_back(std::move(next));
+
+    if (stopsExecution) {
+      break;
+    }
+  }
+
+  stmts = std::move(optimized);
+}
+
+std::unique_ptr<Stmt> Optimizer::optimizeStmt(std::unique_ptr<Stmt> stmt) {
   if (!stmt) {
-    return;
+    return nullptr;
   }
 
-  if (auto *s = dynamic_cast<FuncStmt *>(stmt)) {
-    optimizeStmt(s->body.get());
-    return;
+  if (auto *s = dynamic_cast<FuncStmt *>(stmt.get())) {
+    s->body = optimizeStmt(std::move(s->body));
+    if (!s->body) {
+      s->body = std::make_unique<BlockStmt>(
+          std::vector<std::unique_ptr<Stmt>>{});
+    }
+    return stmt;
   }
 
-  if (auto *s = dynamic_cast<ReturnStmt *>(stmt)) {
+  if (auto *s = dynamic_cast<ReturnStmt *>(stmt.get())) {
     if (s->value) {
       s->value = optimizeExpr(std::move(s->value));
     }
-    return;
+    return stmt;
   }
 
-  if (auto *s = dynamic_cast<VarStmt *>(stmt)) {
+  if (auto *s = dynamic_cast<VarStmt *>(stmt.get())) {
     if (s->init) {
       s->init = optimizeExpr(std::move(s->init));
     }
-    return;
+    return stmt;
   }
 
-  if (auto *s = dynamic_cast<PrintStmt *>(stmt)) {
+  if (auto *s = dynamic_cast<PrintStmt *>(stmt.get())) {
     s->expr = optimizeExpr(std::move(s->expr));
-    return;
+    return stmt;
   }
 
-  if (auto *s = dynamic_cast<ExprStmt *>(stmt)) {
+  if (auto *s = dynamic_cast<ExprStmt *>(stmt.get())) {
     s->expr = optimizeExpr(std::move(s->expr));
-    return;
+    return stmt;
   }
 
-  if (auto *s = dynamic_cast<BlockStmt *>(stmt)) {
-    for (auto &child : s->stmts) {
-      optimizeStmt(child.get());
-    }
-    return;
+  if (auto *s = dynamic_cast<BlockStmt *>(stmt.get())) {
+    optimizeStmtList(s->stmts);
+    return stmt;
   }
 
-  if (auto *s = dynamic_cast<IfStmt *>(stmt)) {
+  if (auto *s = dynamic_cast<IfStmt *>(stmt.get())) {
     s->cond = optimizeExpr(std::move(s->cond));
-    optimizeStmt(s->thenBranch.get());
+
+    s->thenBranch = optimizeStmt(std::move(s->thenBranch));
+    if (!s->thenBranch) {
+      s->thenBranch = std::make_unique<BlockStmt>(
+          std::vector<std::unique_ptr<Stmt>>{});
+    }
+
     if (s->elseBranch) {
-      optimizeStmt(s->elseBranch.get());
+      s->elseBranch = optimizeStmt(std::move(s->elseBranch));
     }
-    return;
+
+    if (auto *cond = dynamic_cast<BoolExpr *>(s->cond.get())) {
+      if (cond->value) {
+        return std::move(s->thenBranch);
+      }
+      return s->elseBranch ? std::move(s->elseBranch) : nullptr;
+    }
+
+    return stmt;
   }
 
-  if (auto *s = dynamic_cast<WhileStmt *>(stmt)) {
+  if (auto *s = dynamic_cast<WhileStmt *>(stmt.get())) {
     s->cond = optimizeExpr(std::move(s->cond));
-    optimizeStmt(s->body.get());
-    return;
+    s->body = optimizeStmt(std::move(s->body));
+    if (!s->body) {
+      s->body = std::make_unique<BlockStmt>(
+          std::vector<std::unique_ptr<Stmt>>{});
+    }
+
+    if (auto *cond = dynamic_cast<BoolExpr *>(s->cond.get())) {
+      if (!cond->value) {
+        return nullptr;
+      }
+    }
+
+    return stmt;
   }
+
+  return stmt;
 }

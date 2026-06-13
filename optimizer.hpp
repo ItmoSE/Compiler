@@ -11,7 +11,8 @@ public:
 
 private:
   std::unique_ptr<Expr> optimizeExpr(std::unique_ptr<Expr> expr);
-  void optimizeStmt(Stmt *stmt);
+  std::unique_ptr<Stmt> optimizeStmt(std::unique_ptr<Stmt> stmt);
+  void optimizeStmtList(std::vector<std::unique_ptr<Stmt>> &stmts);
 
   std::unique_ptr<Expr> tryFoldUnary(std::unique_ptr<UnaryExpr> expr);
   std::unique_ptr<Expr> tryFoldBinary(std::unique_ptr<BinaryExpr> expr);
